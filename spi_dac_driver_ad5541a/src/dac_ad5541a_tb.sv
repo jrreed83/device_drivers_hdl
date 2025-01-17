@@ -4,6 +4,7 @@ module dac_ad5541a_tb;
 
     logic        mclk;
     logic        rst;
+    logic        en;
     logic        m_axis_valid;
     logic        s_axis_ready;
     logic [15:0] m_axis_data;
@@ -21,6 +22,7 @@ module dac_ad5541a_tb;
         // GENERAL SIGNALS FOR SYNCHRONOUS DESIGN
         .mclk (mclk),
         .rst  (rst),
+        .en   (en),
         // AXI-STREAM SIGNALS
         .s_axis_valid (m_axis_valid),
         .m_axis_ready (s_axis_ready),
@@ -35,9 +37,14 @@ module dac_ad5541a_tb;
     /* 
         Clock Signal
     */
+    localparam int CLK_FREQUENCY = 50_000_000;
+    localparam int CLK_CYCLE_NS  = 1_000_000_000 / CLK_FREQUENCY;
+    localparam int HALF_CLK_CYCLE_NS = CLK_CYCLE_NS/2;
+
     initial begin
+        $display(CLK_CYCLE_NS);
         forever begin 
-            mclk = 0; #10ns; mclk = 1; #10ns;
+            mclk = 0; #HALF_CLK_CYCLE_NS; mclk = 1; #HALF_CLK_CYCLE_NS;
         end
     end
 

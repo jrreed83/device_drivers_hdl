@@ -1,12 +1,27 @@
+`timescale 1ns/1ns
+
+//
+// Good references:
+// FPGA For Beginners: Stacey.  
+// State machine talk
+// https://www.youtube.com/watch?v=JXT-4ghebfI
+//
+//
+// 
+//
+// mclk:    50MHz
+// sclk:    6.25MHz - divide by 8  
+// dac_clk: 500KHz  - divide by 100
+//
 module dac_ad5541a
 #(
-    parameter MCLK_CYCLES_PER_XMIT          = 256,
+    parameter MCLK_CYCLES_PER_DAC_CLK_CYCLE = 100,
               MCLK_CYCLES_PER_SPI_CLK_CYCLE = 8
 )
 (
-    input  logic mclk,
-    input  logic rst,
-
+    input logic mclk,
+    input logic rst,
+    input logic en,
     // AXI-STREAM SIGNALS
     input  logic        s_axis_valid,
     output logic        m_axis_ready,
@@ -45,24 +60,40 @@ end
 always_comb begin
     next_state = curr_state;
     case (curr_state)
-        IDLE:
-            if (ready_for_sample == 1'b1) begin 
-                next_state = LOAD;
+        IDLE: 
+            begin 
+                if (ready_for_sample == 1'b1) begin 
+                    next_state = LOAD;
+                end
             end
-        LOAD:
-            next_state = START;
-        START:
-            next_state = DATA;
-        DATA:
-            if (all_bits_sent == 1'b1) begin 
-                next_state = FINISH;
+        LOAD: 
+            begin
+                next_state = START;
+            end
+        START: 
+            begin 
+                next_state = DATA;
+            end
+        DATA: 
+            begin 
+                if (sclk_posedge_cnt == 16) begin 
+                    next_state = FINISH;
+                end
             end
         FINISH:
-            next_state = DONE;
-        DONE:
-            next_state = IDLE;
+            begin 
+                if (sclk_posedge_cnt == 17) begin 
+                    next_state = DONE;
+                end
+            end 
+        DONE: 
+            begin 
+                next_state = IDLE;
+            end
         default:
-            next_state = curr_state;
+            begin
+                next_state = curr_state;
+            end  
     endcase
 
 end
@@ -70,7 +101,7 @@ end
 
 
 //
-//Counter resets at each state transition
+// Counter resets at each state transition
 //
 logic [15:0] cnt;
 always_ff @(posedge mclk) begin 
@@ -89,6 +120,7 @@ end
 
 
 
+assign ready_for_sample = (curr_state == IDLE && cnt == MCLK_CYCLES_PER_DAC_CLK_CYCLE-1);
 
 
 /*
@@ -98,7 +130,6 @@ end
     Data should only be 'loaded in' when the ready and valid signals are high.  
 
 */
-assign ready_for_sample = (curr_state == IDLE && cnt == MCLK_CYCLES_PER_XMIT-1);
 
 assign m_axis_ready = ready_for_sample;
 
@@ -121,35 +152,6 @@ end
 
 
 
-/*
-
-    OUTPUT Signals
-
-*/
-
-
-
-//
-// Chip Select
-//
-always_ff @(posedge mclk) begin 
-    if (rst) begin 
-        cs_n <= 1'b1;
-    end
-    else begin 
-        case (curr_state)  
-            START: cs_n <= 1'b0;
-            DONE:  cs_n <= 1'b1;
-        endcase
-    end
-end
-
-logic cs_n_q;
-
-
-
-
-
 //
 // SPI Clock
 //
@@ -161,11 +163,22 @@ always_ff @(posedge mclk) begin
     else begin
         case (curr_state)
             DATA:
-                if (sclk_cnt == MCLK_CYCLES_PER_SPI_CLK_CYCLE) begin
+                if (sclk_cnt == MCLK_CYCLES_PER_SPI_CLK_CYCLE-1) begin
                     sclk_cnt <= 0;
                 end 
                 else begin 
                     sclk_cnt <= sclk_cnt + 1;
+                end
+            FINISH:
+                 if (sclk_cnt == MCLK_CYCLES_PER_SPI_CLK_CYCLE-1) begin
+                    sclk_cnt <= 0;
+                end 
+                else begin 
+                    sclk_cnt <= sclk_cnt + 1;
+                end
+            DONE:
+                begin
+                    sclk_cnt <= 0;
                 end
         endcase
     end
@@ -177,11 +190,43 @@ always_ff @(posedge mclk) begin
         sclk <= 1'b1;
     end
     else begin
-        if (curr_state == DATA) begin
-            if (sclk_cnt == 0) begin 
-                sclk <= ~sclk;
-            end
-        end
+        case (curr_state)
+            IDLE: 
+                begin
+                    cs_n <= 1'b1;
+                    sclk <= 1'b1;
+                    mosi <= 1'b0;
+                end
+            START: 
+                begin
+                    cs_n <= 1'b0; 
+                end
+            DATA: 
+                begin
+                    if (sclk_cnt == 0) begin 
+                        sclk <= ~sclk;
+                    end
+
+                    if (sclk_negedge == 1'b1) begin 
+                        mosi <= data_in[15-sclk_posedge_cnt];
+                    end
+                end
+            FINISH: 
+                begin 
+                    if (sclk_cnt == 0) begin 
+                        sclk <= ~sclk;
+                    end
+
+                    if (sclk_negedge == 1'b1) begin 
+                        cs_n <= 1'b1;
+                    end
+                end
+            DONE: 
+                begin
+                    mosi <= 1'b0;
+                    sclk <= 1'b1;
+                end
+        endcase
     end
 end
 
@@ -210,51 +255,37 @@ assign sclk_negedge = ~sclk &  sclk_q;
 //
 
 
-logic [15:0] bit_cnt;
+logic [15:0] sclk_posedge_cnt;
 always_ff @(posedge mclk) begin 
     if (rst) begin 
-        bit_cnt <= 0;
+        sclk_posedge_cnt <= 0;
     end
     else begin
         case (curr_state)
             IDLE: 
                 begin 
-                    bit_cnt <= 0;
+                    sclk_posedge_cnt <= 0;
                 end 
-            DATA: 
-                if (sclk_posedge == 1'b1) begin 
-                    bit_cnt <= bit_cnt + 1;
+            DATA:
+                begin
+                    if (sclk_posedge == 1'b1) begin 
+                        sclk_posedge_cnt <= sclk_posedge_cnt + 1;
+                    end
+                end
+            FINISH:
+                 begin
+                    if (sclk_posedge == 1'b1) begin 
+                        sclk_posedge_cnt <= sclk_posedge_cnt + 1;
+                    end
                 end
             default:
-                bit_cnt <= 0;            
+                begin 
+                    sclk_posedge_cnt <= 0;
+                end
         endcase
     end
 end
 
-
-logic all_bits_sent;
-assign all_bits_sent = bit_cnt == 16;
-
-
-/* 
-    Output Serial Data:
-    Load the bit on the falling edge of the SPI clock so that it's settled for the rising edge.
-*/ 
-
-always_ff @(posedge mclk) begin 
-    case (curr_state)
-        DATA:
-            if (sclk_negedge == 1'b1) begin 
-                mosi <= data_in[15-bit_cnt];
-            end
-        default: mosi <= 0;
-    endcase
-end
-
-
-//
-//
-//
 assign ldac_n = 1'b0;
 
 endmodule
