@@ -1,14 +1,5 @@
 `timescale 1ns/1ns
 
-//
-// Good references:
-// FPGA For Beginners: Stacey.  
-// State machine talk
-// https://www.youtube.com/watch?v=JXT-4ghebfI
-//
-//
-// 
-//
 // mclk:    50MHz
 // sclk:    6.25MHz - divide by 8  
 // dac_clk: 500KHz  - divide by 100
@@ -147,53 +138,57 @@ end
 
 
 
+logic i_cs_n;
+logic i_sclk;
+logic i_mosi;
+logic i_ldac_n;
 
 always_comb begin    
     case (curr_state)
         IDLE:
             begin
-                cs_n   = 1'b1;
-                sclk   = 1'b1;
-                mosi   = 1'b0;
-                ldac_n = 1'b0;
+                i_cs_n   = 1'b1;
+                i_sclk   = 1'b1;
+                i_mosi   = 1'b0;
+                i_ldac_n = 1'b0;
             end
 
         LOAD:
             begin
-                cs_n   = 1'b1;
-                sclk   = 1'b1;
-                mosi   = 1'b0;
-                ldac_n = 1'b0;
+                i_cs_n   = 1'b1;
+                i_sclk   = 1'b1;
+                i_mosi   = 1'b0;
+                i_ldac_n = 1'b0;
             end
         START:
             begin
-                cs_n   = 1'b0;
-                sclk   = 1'b1;
-                mosi   = 1'b0;
-                ldac_n = 1'b0;
+                i_cs_n   = 1'b0;
+                i_sclk   = 1'b1;
+                i_mosi   = 1'b0;
+                i_ldac_n = 1'b0;
             end
         
         XMIT:
             begin
-                cs_n   = 1'b0;
-                sclk   = (sclk_cnt < 4) ? 1'b0 : 1'b1;
-                mosi   = data_bit;
-                ldac_n = 1'b0;
+                i_cs_n   = 1'b0;
+                i_sclk   = (sclk_cnt < 4) ? 1'b0 : 1'b1;
+                i_mosi   = data_bit;
+                i_ldac_n = 1'b0;
             end
         
         FINISH:
             begin
-                cs_n   = 1'b1;
-                sclk   = (sclk_cnt < 4) ? 1'b0 : 1'b1;
-                mosi   = data_bit;
-                ldac_n = 1'b0;
+                i_cs_n   = 1'b1;
+                i_sclk   = (sclk_cnt < 4) ? 1'b0 : 1'b1;
+                i_mosi   = data_bit;
+                i_ldac_n = 1'b0;
             end
         DONE:
             begin
-                cs_n   = 1'b1;
-                sclk   = 1'b1;
-                mosi   = 1'b0;
-                ldac_n = 1'b0;
+                i_cs_n   = 1'b1;
+                i_sclk   = 1'b1;
+                i_mosi   = 1'b0;
+                i_ldac_n = 1'b0;
             end
   
     endcase
@@ -225,9 +220,10 @@ end
 //
 // Load the bit on the falling edge so it's settled on the rising edge
 //
+logic data_bit;
 always_ff @(posedge mclk) begin 
     if (rst) begin 
-        data_bit <= 1'b0
+        data_bit <= 1'b0;
     end
     else begin 
         if (curr_state == XMIT) begin 
@@ -336,6 +332,21 @@ always_ff @(posedge mclk) begin
     end
 end
 
+
+always_ff @(posedge mclk) begin 
+    if (rst) begin 
+        cs_n   <= 1'b1;
+        mosi   <= 1'b0;
+        sclk   <= 1'b1;
+        ldac_n <= 1'b0;
+    end
+    else begin 
+        cs_n   <= i_cs_n;
+        mosi   <= i_mosi;
+        sclk   <= i_sclk;
+        ldac_n <= i_ldac_n;
+    end
+end
 
 endmodule
 
