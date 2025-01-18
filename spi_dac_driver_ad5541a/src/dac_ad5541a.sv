@@ -38,7 +38,7 @@ module dac_ad5541a
 /*
     State machine
 */
-typedef enum { IDLE, LOAD, START, DATA, FINISH, DONE } state_e;
+typedef enum { IDLE, LOAD, START, XMIT, FINISH, DONE } state_e;
 
 
 state_e curr_state;
@@ -62,7 +62,7 @@ always_comb begin
     case (curr_state)
         IDLE: 
             begin 
-                if (ready_for_sample == 1'b1) begin 
+                if (state_cnt == MCLK_CYCLES_PER_DAC_CLK_CYCLE-1) begin 
                     next_state = LOAD;
                 end
             end
@@ -72,9 +72,9 @@ always_comb begin
             end
         START: 
             begin 
-                next_state = DATA;
+                next_state = XMIT;
             end
-        DATA: 
+        XMIT: 
             begin 
                 if (sclk_posedge_cnt == 16) begin 
                     next_state = FINISH;
@@ -103,24 +103,21 @@ end
 //
 // Counter resets at each state transition
 //
-logic [15:0] cnt;
+logic [15:0] state_cnt;
 always_ff @(posedge mclk) begin 
     if (rst) begin 
-        cnt <= 0;
+        state_cnt <= 0;
     end
     else begin 
         if (curr_state != next_state) begin 
-            cnt <= 0;
+            state_cnt <= 0;
         end
         else begin 
-            cnt <= cnt + 1;
+            state_cnt <= state_cnt + 1;
         end
     end
 end
 
-
-
-assign ready_for_sample = (curr_state == IDLE && cnt == MCLK_CYCLES_PER_DAC_CLK_CYCLE-1);
 
 
 /*
@@ -131,7 +128,7 @@ assign ready_for_sample = (curr_state == IDLE && cnt == MCLK_CYCLES_PER_DAC_CLK_
 
 */
 
-assign m_axis_ready = ready_for_sample;
+assign m_axis_ready = curr_state == IDLE && next_state == LOAD;
 
 
 logic [15:0] data_in;
@@ -151,40 +148,100 @@ end
 
 
 
+always_comb begin    
+    case (curr_state)
+        IDLE:
+            begin
+                cs_n   = 1'b1;
+                sclk   = 1'b1;
+                mosi   = 1'b0;
+                ldac_n = 1'b0;
+            end
 
-//
-// SPI Clock
-//
+        LOAD:
+            begin
+                cs_n   = 1'b1;
+                sclk   = 1'b1;
+                mosi   = 1'b0;
+                ldac_n = 1'b0;
+            end
+        START:
+            begin
+                cs_n   = 1'b0;
+                sclk   = 1'b1;
+                mosi   = 1'b0;
+                ldac_n = 1'b0;
+            end
+        
+        XMIT:
+            begin
+                cs_n   = 1'b0;
+                sclk   = (sclk_cnt < 4) ? 1'b0 : 1'b1;
+                mosi   = data_bit;
+                ldac_n = 1'b0;
+            end
+        
+        FINISH:
+            begin
+                cs_n   = 1'b1;
+                sclk   = (sclk_cnt < 4) ? 1'b0 : 1'b1;
+                mosi   = data_bit;
+                ldac_n = 1'b0;
+            end
+        DONE:
+            begin
+                cs_n   = 1'b1;
+                sclk   = 1'b1;
+                mosi   = 1'b0;
+                ldac_n = 1'b0;
+            end
+  
+    endcase
+
+end
+
+
 logic [15:0] sclk_cnt;
 always_ff @(posedge mclk) begin 
     if (rst) begin 
         sclk_cnt <= 0;
     end
     else begin
-        case (curr_state)
-            DATA:
-                if (sclk_cnt == MCLK_CYCLES_PER_SPI_CLK_CYCLE-1) begin
-                    sclk_cnt <= 0;
-                end 
-                else begin 
-                    sclk_cnt <= sclk_cnt + 1;
+        if (curr_state == XMIT || curr_state == FINISH) begin 
+            if (sclk_cnt == MCLK_CYCLES_PER_SPI_CLK_CYCLE-1) begin
+                sclk_cnt <= 0;
+            end 
+            else begin 
+                sclk_cnt <= sclk_cnt + 1;
+            end
+        end
+        else if (curr_state == IDLE) begin 
+            sclk_cnt <= 0;
+        end
+    end
+end
+//
+//
+//
+always_ff @(posedge mclk) begin 
+    if (rst) begin 
+        data_bit <= 1'b0
+    end
+    else begin 
+        if (curr_state == XMIT) begin 
+            if (sclk_negedge == 1'b1) begin 
+                if (sclk_posedge_cnt < 16) begin 
+                    data_bit <= data_in[15-sclk_posedge_cnt];
                 end
-            FINISH:
-                 if (sclk_cnt == MCLK_CYCLES_PER_SPI_CLK_CYCLE-1) begin
-                    sclk_cnt <= 0;
-                end 
-                else begin 
-                    sclk_cnt <= sclk_cnt + 1;
-                end
-            DONE:
-                begin
-                    sclk_cnt <= 0;
-                end
-        endcase
+            end
+        end
+        else begin 
+            data_bit <= 1'b0;
+        end
     end
 end
 
-
+/*
 always_ff @(posedge mclk) begin 
     if (rst) begin 
         sclk <= 1'b1;
@@ -193,15 +250,15 @@ always_ff @(posedge mclk) begin
         case (curr_state)
             IDLE: 
                 begin
-                    cs_n <= 1'b1;
+                    //cs_n <= 1'b1;
                     sclk <= 1'b1;
                     mosi <= 1'b0;
                 end
             START: 
                 begin
-                    cs_n <= 1'b0; 
+                    //cs_n <= 1'b0; 
                 end
-            DATA: 
+            XMIT: 
                 begin
                     if (sclk_cnt == 0) begin 
                         sclk <= ~sclk;
@@ -218,7 +275,7 @@ always_ff @(posedge mclk) begin
                     end
 
                     if (sclk_negedge == 1'b1) begin 
-                        cs_n <= 1'b1;
+                        //cs_n <= 1'b1;
                     end
                 end
             DONE: 
@@ -229,8 +286,13 @@ always_ff @(posedge mclk) begin
         endcase
     end
 end
+*/
 
 
+
+//
+// SPI Clock
+//
 
 
 
@@ -261,32 +323,17 @@ always_ff @(posedge mclk) begin
         sclk_posedge_cnt <= 0;
     end
     else begin
-        case (curr_state)
-            IDLE: 
-                begin 
-                    sclk_posedge_cnt <= 0;
-                end 
-            DATA:
-                begin
-                    if (sclk_posedge == 1'b1) begin 
-                        sclk_posedge_cnt <= sclk_posedge_cnt + 1;
-                    end
-                end
-            FINISH:
-                 begin
-                    if (sclk_posedge == 1'b1) begin 
-                        sclk_posedge_cnt <= sclk_posedge_cnt + 1;
-                    end
-                end
-            default:
-                begin 
-                    sclk_posedge_cnt <= 0;
-                end
-        endcase
+        if (curr_state == XMIT || curr_state == FINISH) begin 
+            if (sclk_posedge == 1'b1) begin 
+                sclk_posedge_cnt <= sclk_posedge_cnt + 1;
+            end
+        end
+        else begin 
+            sclk_posedge_cnt <= 0;
+        end
     end
 end
 
-assign ldac_n = 1'b0;
 
 endmodule
 
