@@ -37,12 +37,11 @@ module dac_ad5541a_tb;
     /* 
         Clock Signal
     */
-    localparam int CLK_FREQUENCY = 50_000_000;
-    localparam int CLK_CYCLE_NS  = 1_000_000_000 / CLK_FREQUENCY;
+    localparam int CLK_FREQUENCY     = 50_000_000;
+    localparam int CLK_CYCLE_NS      = 1_000_000_000 / CLK_FREQUENCY;
     localparam int HALF_CLK_CYCLE_NS = CLK_CYCLE_NS/2;
 
     initial begin
-        $display(CLK_CYCLE_NS);
         forever begin 
             mclk = 0; #HALF_CLK_CYCLE_NS; mclk = 1; #HALF_CLK_CYCLE_NS;
         end
@@ -72,18 +71,18 @@ module dac_ad5541a_tb;
         mem[3] = 16'hC0DE;
     end
 
-    logic [2:0] cnt;
+    logic [1:0] sample_cnt;
 
     always_ff @(posedge mclk) begin
         if (rst) begin 
             m_axis_valid <= 1'b1;
             m_axis_data  <= 0;
-            cnt <= 0;
+            sample_cnt   <= 0;
 
         end
         else if (m_axis_valid == 1'b1 && s_axis_ready == 1'b1) begin 
-            m_axis_data  <= mem[cnt];
-            cnt          <= cnt + 1;
+            m_axis_data  <= mem[sample_cnt];
+            sample_cnt   <= sample_cnt + 1;
         end
     end
     /*
