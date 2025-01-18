@@ -220,8 +220,10 @@ always_ff @(posedge mclk) begin
         end
     end
 end
+
+
 //
-//
+// Load the bit on the falling edge so it's settled on the rising edge
 //
 always_ff @(posedge mclk) begin 
     if (rst) begin 
