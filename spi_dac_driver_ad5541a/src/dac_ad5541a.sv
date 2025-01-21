@@ -166,6 +166,8 @@ module dac_ad5541a
                     end
         
                 XMIT:
+                    // Toggle the clock and load the data on falling edge of
+                    // the clock
                     begin
                         if (sclk_negedge == 1) begin
                             sclk <= 0;
@@ -173,26 +175,23 @@ module dac_ad5541a
                                 mosi <= data_in[15-sclk_posedge_cnt];
                             end
                         end
-                        else if (sclk_posedge) begin
+                        else if (sclk_posedge == 1) begin
                             sclk <= 1;
                         end
                     end
         
                 FINISH:
+                    // Last cycle, data bin and chip select should go back to
+                    // nominal
                     begin
-                        cs_n <= 1'b1;
-                        mosi <= 1'b0;
                         if (sclk_negedge == 1) begin 
-                            sclk <= 0;
+                            sclk <= 1'b0;
+                            cs_n <= 1'b1;
+                            mosi <= 1'b0;
                         end
                         else if (sclk_posedge == 1) begin 
                             sclk <= 1;
                         end
-                    end
-        
-                DONE:
-                    begin
-                        sclk <= 1'b1;
                     end
   
             endcase
