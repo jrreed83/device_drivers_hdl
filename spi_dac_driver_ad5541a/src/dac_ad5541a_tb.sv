@@ -14,9 +14,58 @@ module dac_ad5541a_tb;
     logic mosi;
     logic ldac_n;
 
-    /*
-    * Instantiate the IP block.
-    */
+
+    // 
+    //    Clock Signal
+    //
+    localparam int CLK_FREQUENCY     = 50_000_000;
+    localparam int CLK_CYCLE_NS      = 1_000_000_000 / CLK_FREQUENCY;
+    localparam int HALF_CLK_CYCLE_NS = CLK_CYCLE_NS/2;
+
+    initial begin
+        forever begin 
+            mclk = 0; #HALF_CLK_CYCLE_NS; mclk = 1; #HALF_CLK_CYCLE_NS;
+        end
+    end
+
+    //
+    // Reset Signal  
+    //
+    initial begin 
+        rst = 0;
+        #100ns;
+        @(posedge mclk) 
+        rst = 1;
+        #30ns;
+        rst = 0;
+    end
+
+    //
+    // Set the total run time of the simulation and name the file that
+    // contains the signal data for the waveform viewer
+    //
+    initial begin
+        $dumpfile("dac_ad5541a.vcd");
+        $dumpvars;
+        #50us; 
+        $finish;
+    end
+
+    //
+    // 
+    //
+    data_generator gen
+    (
+        .clk          (mclk),
+        .rst          (rst),
+        .m_axis_valid (m_axis_valid), 
+        .s_axis_ready (s_axis_ready),
+        .m_axis_data  (m_axis_data)
+    );
+
+    //
+    // 
+    //
     dac_ad5541a dac_dut
     (
         // GENERAL SIGNALS FOR SYNCHRONOUS DESIGN
@@ -34,66 +83,17 @@ module dac_ad5541a_tb;
         .ldac_n (ldac_n)
     );
 
-    /* 
-        Clock Signal
-    */
-    localparam int CLK_FREQUENCY     = 50_000_000;
-    localparam int CLK_CYCLE_NS      = 1_000_000_000 / CLK_FREQUENCY;
-    localparam int HALF_CLK_CYCLE_NS = CLK_CYCLE_NS/2;
 
-    initial begin
-        forever begin 
-            mclk = 0; #HALF_CLK_CYCLE_NS; mclk = 1; #HALF_CLK_CYCLE_NS;
-        end
-    end
-
-    /*
-        Reset Signal  
-    */
-    initial begin 
-        rst = 0;
-        #100ns;
-        @(posedge mclk) 
-        rst = 1;
-        #30ns;
-        rst = 0;
-    end
-
-    /* 
-        AXI Stream Stuff
-    */
-
-    logic [15:0] mem[0:3];
-    initial begin 
-        mem[0] = 16'hCAFE;
-        mem[1] = 16'hBEEF;
-        mem[2] = 16'hFACE;
-        mem[3] = 16'hC0DE;
-    end
-
-    logic [1:0] sample_cnt;
-
-    always_ff @(posedge mclk) begin
-        if (rst) begin 
-            m_axis_valid <= 1'b1;
-            m_axis_data  <= 0;
-            sample_cnt   <= 0;
-
-        end
-        else if (m_axis_valid == 1'b1 && s_axis_ready == 1'b1) begin 
-            m_axis_data  <= mem[sample_cnt];
-            sample_cnt   <= sample_cnt + 1;
-        end
-    end
-    /*
-    * Initial Block for simulation termination and simulation output file
-    *
-    */
-    initial begin
-        $dumpfile("dac_ad5541a.vcd");
-        $dumpvars;
-        #50us; 
-        $finish;
-    end
+    //
+    // 
+    //
+//    dac_ad5541a_check dac_check
+//    (
+//        .clk  (clk),
+//        .rst  (rst),
+//        .cs_n (cs_n),
+//        .mosi (mosi),
+//        .sclk (sclk)
+//    );
 endmodule
 

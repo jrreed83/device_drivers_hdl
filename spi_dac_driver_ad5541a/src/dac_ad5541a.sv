@@ -33,7 +33,7 @@ module dac_ad5541a
     /*
         State machine
     */
-    typedef enum { IDLE, LOAD, START, XMIT, FINISH, DONE } state_e;
+    typedef enum logic[2:0] { IDLE, LOAD, START, XMIT, FINISH, DONE } state_e;
 
 
     state_e curr_state;
@@ -218,7 +218,7 @@ module dac_ad5541a
                 end
 
 
-                if (sclk_cnt == MCLK_CYCLES_PER_SPI_CLK_CYCLE/2) begin 
+                if (sclk_posedge == 1'b1) begin 
                     sclk_posedge_cnt <= sclk_posedge_cnt + 1;
                 end
             end
