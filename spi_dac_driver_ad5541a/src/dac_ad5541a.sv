@@ -21,12 +21,13 @@ module dac_ad5541a
     input  logic        s_axis_valid,
     output logic        m_axis_ready,
     input  logic [15:0] s_axis_data,
-
     // SPI SIGNALS
     output logic cs_n,
     output logic ldac_n,
     output logic mosi,
-    output logic sclk
+    output logic sclk,
+
+    output logic error
 );
 
 
@@ -56,29 +57,52 @@ module dac_ad5541a
         next_state = curr_state;
         case (curr_state)
             IDLE: 
-                begin 
-                    if (state_cnt == MCLK_CYCLES_PER_DAC_CLK_CYCLE-1) begin 
-                        next_state = LOAD;
+                begin
+                    if (en == 1'b1) begin 
+                        if (state_cnt == MCLK_CYCLES_PER_DAC_CLK_CYCLE-1) begin 
+                            next_state = LOAD;
+                        end
+                    end  
+                    else begin 
+                        next_state = IDLE;
                     end
                 end
             LOAD: 
                 begin
-                    next_state = START;
+                    if (en == 1'b1) begin 
+                        next_state = START;
+                    end
+                    else begin 
+                        next_state = IDLE;
+                    end
                 end
             START: 
                 begin 
-                    next_state = XMIT;
+                    if (en == 1'b1) begin 
+                        next_state = XMIT;
+                    end
+                    else begin 
+                        next_state = IDLE;
+                    end
                 end
             XMIT: 
                 begin 
-                    if (sclk_posedge_cnt == 16) begin 
-                        next_state = FINISH;
+                    if (en == 1'b1) begin 
+                        if (sclk_posedge_cnt == 16) begin 
+                            next_state = FINISH;
+                        end
+                    end
+                    else begin 
+                        next_state = IDLE;
                     end
                 end
             FINISH:
                 begin 
                     if (sclk_posedge_cnt == 17) begin 
                         next_state = DONE;
+                    end
+                    else begin 
+                        next_state = IDLE;
                     end
                 end 
             DONE: 
@@ -87,6 +111,7 @@ module dac_ad5541a
                 end
             default:
                 begin
+
                     next_state = curr_state;
                 end  
         endcase
@@ -115,14 +140,16 @@ module dac_ad5541a
 
 
 
-    /*
+    //
+    //
+    //    AXI Stream handshake.  
+    //
+    //    Data should only be 'loaded in' when the ready and valid signals are high. 
+    //    
+    //
+    //
+
     
-        AXI Stream handshake.  
-
-        Data should only be 'loaded in' when the ready and valid signals are high.  
-
-    */
-
     assign m_axis_ready = curr_state == IDLE && next_state == LOAD;
 
 
@@ -139,7 +166,10 @@ module dac_ad5541a
         end
     end
 
-
+    // 
+    // Error occurs when the DAC is prepared to transmit, but there's no valid data to transmit.
+    //
+    assign error = ~s_axis_valid & m_axis_ready;
 
     //
     // Registered Outputs
@@ -166,14 +196,13 @@ module dac_ad5541a
                     end
         
                 XMIT:
-                    // Toggle the clock and load the data on falling edge of
-                    // the clock
+                    //
+                    // Toggle the clock and load the data on falling edge of the clock
+                    //
                     begin
                         if (sclk_negedge == 1) begin
                             sclk <= 0;
-                            if (sclk_posedge_cnt < 16) begin 
-                                mosi <= data_in[15-sclk_posedge_cnt];
-                            end
+                            mosi <= data_in[15-sclk_posedge_cnt];
                         end
                         else if (sclk_posedge == 1) begin
                             sclk <= 1;
@@ -181,8 +210,9 @@ module dac_ad5541a
                     end
         
                 FINISH:
-                    // Last cycle, data bin and chip select should go back to
-                    // nominal
+                    //
+                    // Last cycle, data bin and chip select should go back to initial values
+                    //
                     begin
                         if (sclk_negedge == 1) begin 
                             sclk <= 1'b0;

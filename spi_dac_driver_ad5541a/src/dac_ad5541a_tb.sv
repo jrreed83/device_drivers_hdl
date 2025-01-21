@@ -13,7 +13,7 @@ module dac_ad5541a_tb;
     logic cs_n;
     logic mosi;
     logic ldac_n;
-
+    logic error;
 
     // 
     //    Clock Signal
@@ -37,6 +37,8 @@ module dac_ad5541a_tb;
         @(posedge mclk) 
         rst = 1;
         #30ns;
+        en = 1;
+        #40ns;
         rst = 0;
     end
 
@@ -76,11 +78,13 @@ module dac_ad5541a_tb;
         .s_axis_valid (m_axis_valid),
         .m_axis_ready (s_axis_ready),
         .s_axis_data  (m_axis_data),
-        // SPI SIGNAKS
+        // SPI SIGNALS
         .sclk   (sclk),
         .mosi   (mosi),
         .cs_n   (cs_n),
-        .ldac_n (ldac_n)
+        .ldac_n (ldac_n),
+
+        .error  (error)
     );
 
 

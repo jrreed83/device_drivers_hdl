@@ -6,7 +6,7 @@ all:
 	iverilog -g2012 dac_ad5541a_tb.sv data_generator.sv dac_ad5541a.sv -o ${EXE}
 
 run:
-	./${EXE}
+	vvp ${EXE}
 
 view:
 	gtkwave ${VCD} 
